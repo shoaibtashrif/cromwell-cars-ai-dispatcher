@@ -22,8 +22,28 @@ router.post('/validateAddress', async (req, res) => {
         
         const { address_lines, postcode, building } = req.body;
         
+        // Fix: Parse stringified address_lines array from AI
+        let parsedAddressLines = address_lines;
+        if (typeof address_lines === 'string') {
+            try {
+                // Parse JSON string like "[\"Address\"]" to actual array
+                parsedAddressLines = JSON.parse(address_lines);
+                console.log(`🔧 PARSED STRING TO ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
+            } catch (e) {
+                // If not valid JSON, treat as single address
+                parsedAddressLines = [address_lines];
+                console.log(`🔧 CONVERTED TO ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
+            }
+        } else if (!Array.isArray(address_lines)) {
+            // Ensure it's always an array
+            parsedAddressLines = address_lines ? [address_lines] : [];
+            console.log(`🔧 MADE ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
+        } else {
+            console.log(`✅ ALREADY ARRAY: ${JSON.stringify(parsedAddressLines)}`);
+        }
+        
         const requestPayload = {
-            address_lines: address_lines,
+            address_lines: parsedAddressLines,
             postcode: postcode,
             building: building
         };
@@ -45,8 +65,10 @@ router.post('/validateAddress', async (req, res) => {
         console.log(`📡 API Response Status: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
+            const errorText = await response.text();
             console.log(`❌ API Error: ${response.status}`);
-            throw new Error(`Address validation API error: ${response.status}`);
+            console.log(`❌ Error Details: ${errorText}`);
+            throw new Error(`Address validation API error: ${response.status} - ${errorText}`);
         }
         
         const result = await response.json();
