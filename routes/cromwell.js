@@ -213,26 +213,44 @@ router.post('/bookCab', async (req, res) => {
             case 'cabBooking':
                 console.log('\n📝 === CREATE BOOKING OPERATION ===');
                 
+                // Map vehicle types to API IDs (based on your working example)
+                const vehicleTypeMapping = {
+                    'standard': 68,
+                    'estate': 69,
+                    'mpv': 70,
+                    'MPV': 70,
+                    'luxury': 71,
+                    'executive': 71
+                };
+                
+                // Get numeric vehicle type ID
+                let numericVehicleTypeId = 68; // default to standard
+                if (vehicleTypeId) {
+                    const vehicleTypeLower = vehicleTypeId.toString().toLowerCase();
+                    numericVehicleTypeId = vehicleTypeMapping[vehicleTypeLower] || vehicleTypeMapping[vehicleTypeId] || 68;
+                }
+                
                 const bookingData = {
                     id: 0,
-                    jobNO: jobNO || `A${Math.floor(Math.random() * 1000) + 200}`,
+                    jobNO: "string", // API will assign actual job number
                     date: date || new Date().toISOString(),
                     passengerName: passengerName,
-                    passengerPhone: Phone || '0000000000',
-                    passengerMobile: Phone || '0000000000',
+                    passengerPhone: Phone || '03000000000', // Use actual phone
+                    passengerMobile: Phone || '03000000000', // Use actual phone  
                     passengerEmail: passengerEmail,
-                    passengers: passengers || 1,
-                    bags: bags || 0,
+                    passengers: parseInt(passengers) || 1,
+                    bags: parseInt(bags) || 0,
                     note: note || '',
                     companyId: 99,
                     driver_id: null,
-                    driverPrice: customerPrice || 0,
-                    customerPrice: customerPrice || 0,
-                    duration: 0,
-                    distance: 0,
+                    paymentMethod_id: null,
+                    driverPrice: parseFloat(customerPrice) || 0,
+                    customerPrice: parseFloat(customerPrice) || 0,
+                    duration: 0, // Will be calculated by system
+                    distance: 0, // Will be calculated by system
                     jobSource: 3,
                     jobcase: 0,
-                    vehicleTypeId: vehicleTypeId || 79,
+                    vehicleTypeId: numericVehicleTypeId, // Now numeric
                     origin: origin,
                     destination: destination
                 };
@@ -241,6 +259,8 @@ router.post('/bookCab', async (req, res) => {
                 console.log(`   URL: ${CABEE_API_BASE}/Job/CreateOnlineJob`);
                 console.log(`   Method: POST`);
                 console.log(`   Headers: Authorization: Bearer ${JWT_TOKEN?.substring(0, 20)}...`);
+                console.log(`   Vehicle Type Mapping: "${vehicleTypeId}" → ${numericVehicleTypeId}`);
+                console.log(`   Phone Number: ${Phone}`);
                 console.log(`   Payload:`, JSON.stringify(bookingData, null, 2));
                 
                 const createResponse = await fetch(`${CABEE_API_BASE}/Job/CreateOnlineJob`, {
@@ -272,8 +292,15 @@ router.post('/bookCab', async (req, res) => {
                 
                 const responseData = {
                     success: true,
-                    jobNO: createResult.jobNO || bookingData.jobNO,
-                    message: 'Booking created successfully',
+                    jobNO: createResult.jobNO,
+                    message: `Booking created successfully. Your job number is ${createResult.jobNO}`,
+                    bookingId: createResult.id,
+                    passengerName: createResult.passengerName,
+                    customerPrice: createResult.customerPrice,
+                    date: createResult.date,
+                    origin: createResult.origin,
+                    destination: createResult.destination,
+                    vehicleType: vehicleTypeId,
                     data: createResult
                 };
                 
