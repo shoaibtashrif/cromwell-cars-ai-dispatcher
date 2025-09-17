@@ -22,11 +22,31 @@ router.post('/validateAddress', async (req, res) => {
         
         const { address_lines, postcode, building } = req.body;
         
+        // Parse address_lines if it comes as a stringified array
+        let parsedAddressLines = address_lines;
+        if (typeof address_lines === 'string') {
+            try {
+                // If it's a JSON string like "[\"Buckingham Palace\"]", parse it
+                parsedAddressLines = JSON.parse(address_lines);
+            } catch (e) {
+                // If parsing fails, treat it as a single address line
+                parsedAddressLines = [address_lines];
+            }
+        } else if (!Array.isArray(address_lines)) {
+            // If it's not an array, make it one
+            parsedAddressLines = address_lines ? [address_lines] : [];
+        }
+        
         const requestPayload = {
-            address_lines: address_lines,
+            address_lines: parsedAddressLines,
             postcode: postcode,
             building: building
         };
+        
+        console.log('🔧 PARSED ADDRESS DATA:');
+        console.log(`   Original address_lines: ${JSON.stringify(address_lines)}`);
+        console.log(`   Parsed to array: ${JSON.stringify(parsedAddressLines)}`);
+        console.log(`   Type: ${Array.isArray(parsedAddressLines) ? 'Array' : typeof parsedAddressLines}`);
         
         console.log('🌐 CALLING CROMWELL ADDRESS API:');
         console.log(`   URL: ${CROMWELL_API_BASE}/address/validate`);
@@ -45,8 +65,10 @@ router.post('/validateAddress', async (req, res) => {
         console.log(`📡 API Response Status: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
+            const errorText = await response.text();
             console.log(`❌ API Error: ${response.status}`);
-            throw new Error(`Address validation API error: ${response.status}`);
+            console.log(`❌ Error Response: ${errorText}`);
+            throw new Error(`Address validation API error: ${response.status} - ${errorText}`);
         }
         
         const result = await response.json();
