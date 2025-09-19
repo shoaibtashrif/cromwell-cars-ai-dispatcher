@@ -14,9 +14,19 @@ get_ngrok_url() {
 # Function to update Twilio webhook
 update_twilio_webhook() {
     local webhook_url=$1
-    local phone_sid="PN41ed904e49e30ed6f151e849d8642a91"
     
-    echo "🔗 Updating Twilio webhook to: $webhook_url"
+    # Get the correct phone SID based on the active number
+    local phone_sid
+    if [ "$TWILIO_PHONE_NUMBER" = "+17624000454" ]; then
+        phone_sid="PN41ed904e49e30ed6f151e849d8642a91"  # US number
+    elif [ "$TWILIO_PHONE_NUMBER" = "+441202144725" ]; then
+        phone_sid="PN2c5ff78e5778b80e82bcd3e4acd03e3c"  # UK number
+    else
+        echo "❌ Error: Unknown phone number in TWILIO_PHONE_NUMBER"
+        return 1
+    fi
+    
+    echo "🔗 Updating Twilio webhook for number $TWILIO_PHONE_NUMBER (SID: $phone_sid)"
     
     local response=$(curl -s -X POST \
         -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" \
@@ -38,9 +48,10 @@ test_webhook() {
     local webhook_url=$1
     echo "🧪 Testing webhook endpoint..."
     
+    # Use the active phone number from environment
     local response=$(curl -s -X POST "$webhook_url/twilio/incoming" \
         -H "Content-Type: application/x-www-form-urlencoded" \
-        -d "CallSid=test123&From=%2B1234567890&To=%2B17624000454")
+        -d "CallSid=test123&From=%2B1234567890&To=$TWILIO_PHONE_NUMBER")
     
     if echo "$response" | grep -q "ultravox"; then
         echo "✅ Webhook test successful!"
@@ -81,7 +92,7 @@ test_webhook "$NGROK_URL"
 
 # Start the server
 echo "🚀 Starting server..."
-echo "📞 Your Twilio number +17624000454 is ready!"
+echo "📞 Your Twilio number $TWILIO_PHONE_NUMBER is ready!"
 echo "🔗 Webhook URL: $WEBHOOK_URL"
 echo "📊 Monitor calls: http://localhost:3000/twilio/active-calls"
 echo ""

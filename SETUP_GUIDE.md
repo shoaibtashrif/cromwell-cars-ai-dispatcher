@@ -2,7 +2,7 @@
 
 ## ✅ Current Status
 - Twilio credentials configured and tested
-- Ultravox API key configured  
+- Ultravox API key configured
 - Real API integrations complete
 - Server ready to run
 

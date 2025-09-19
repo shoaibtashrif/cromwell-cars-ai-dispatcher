@@ -1,4 +1,4 @@
-const toolsBaseUrl = "https://4e9f61362d75.ngrok-free.app"; // Current ngrok URL
+const toolsBaseUrl = "https://437a74d18208.ngrok-free.app"; // Current ngrok URL
 
 // Cromwell Cars Agent Configuration
 const SYSTEM_PROMPT = `
