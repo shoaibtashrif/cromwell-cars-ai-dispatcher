@@ -1,4 +1,4 @@
-const toolsBaseUrl = "https://d19f81a8a4d3.ngrok-free.app"; // Current ngrok URL
+const toolsBaseUrl = "https://4e9f61362d75.ngrok-free.app"; // Current ngrok URL
 
 // Cromwell Cars Agent Configuration
 const SYSTEM_PROMPT = `
@@ -89,7 +89,11 @@ You MUST follow this exact sequence. Do NOT skip steps or proceed to booking wit
 
 6.  **Create Booking & Provide Job Number:**
     *   Use BookCab tool with operation "cabBooking" and all collected details.
-    *   Upon success, clearly state: "Perfect! Your taxi is booked. Your job number is [job number]. Please keep this for your records. Your [vehicle type] will arrive on [date] at [time] at [pickup address]. Is there anything else I can help you with?"
+    *   Check the response:
+        - If response has status "success" and booking_status "confirmed", use the job number from data.jobNO
+        - If response has status "error" or any other status, inform the user there was a problem and try again
+    *   Upon success (status "success" and booking_status "confirmed"), clearly state: "Perfect! Your taxi is booked. Your job number is [data.jobNO]. Your [data.vehicleType] will arrive on [data.date] at [pickup address]. Is there anything else I can help you with?"
+    *   DO NOT retry booking if you receive a success response with a job number.
 
 **Task 2: Update an Existing Booking**
 1.  **Retrieve Booking:** Get job number or phone number to find the booking.
@@ -332,7 +336,7 @@ const selectedTools = [
 export const ULTRAVOX_CALL_CONFIG = {
     systemPrompt: SYSTEM_PROMPT,
     model: 'fixie-ai/ultravox',
-    voice: 'Mark',
+    voice: 'a656a751-b754-4621-b571-e1298cb7e5bb',  // Emma custom voice
     temperature: 0.3,
     firstSpeaker: 'FIRST_SPEAKER_AGENT',
     selectedTools: selectedTools,
