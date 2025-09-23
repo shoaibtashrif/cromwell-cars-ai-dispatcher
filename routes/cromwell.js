@@ -22,25 +22,32 @@ router.post('/validateAddress', async (req, res) => {
         
         const { address_lines, postcode, building } = req.body;
         
-        // Parse address_lines if it comes as a stringified array
+
+        // Fix: Parse stringified address_lines array from AI
         let parsedAddressLines = address_lines;
         if (typeof address_lines === 'string') {
             try {
-                // If it's a JSON string like "[\"Buckingham Palace\"]", parse it
+                // Parse JSON string like "[\"Address\"]" to actual array
                 parsedAddressLines = JSON.parse(address_lines);
+                console.log(`🔧 PARSED STRING TO ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
             } catch (e) {
-                // If parsing fails, treat it as a single address line
+                // If not valid JSON, treat as single address
                 parsedAddressLines = [address_lines];
+                console.log(`🔧 CONVERTED TO ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
             }
         } else if (!Array.isArray(address_lines)) {
-            // If it's not an array, make it one
+            // Ensure it's always an array
             parsedAddressLines = address_lines ? [address_lines] : [];
+            console.log(`🔧 MADE ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
+        } else {
+            console.log(`✅ ALREADY ARRAY: ${JSON.stringify(parsedAddressLines)}`);
+
         }
         
         const requestPayload = {
             address_lines: parsedAddressLines,
             postcode: postcode,
-            building: building
+      
         };
         
         console.log('🔧 PARSED ADDRESS DATA:');
@@ -67,7 +74,9 @@ router.post('/validateAddress', async (req, res) => {
         if (!response.ok) {
             const errorText = await response.text();
             console.log(`❌ API Error: ${response.status}`);
-            console.log(`❌ Error Response: ${errorText}`);
+
+            console.log(`❌ Error Details: ${errorText}`);
+
             throw new Error(`Address validation API error: ${response.status} - ${errorText}`);
         }
         
@@ -313,19 +322,21 @@ router.post('/bookCab', async (req, res) => {
                 console.log(`💰 Price: £${createResult.customerPrice}`);
                 
                 const responseData = {
-                    success: true,
-                    jobNO: createResult.jobNO,
-                    message: `Booking created successfully. Your job number is ${createResult.jobNO}`,
-                    bookingId: createResult.id,
-                    passengerName: createResult.passengerName,
-                    customerPrice: createResult.customerPrice,
-                    date: createResult.date,
-                    origin: createResult.origin,
-                    destination: createResult.destination,
-                    vehicleType: vehicleTypeId,
-                    data: createResult
+                    status: "success",  // Changed from success: true to be more explicit
+                    booking_status: "confirmed",  // Added to be explicit about booking state
+                    error: null,  // Explicitly showing no error
+                    data: {
+                        jobNO: createResult.jobNO,
+                        bookingId: createResult.id,
+                        passengerName: createResult.passengerName,
+                        customerPrice: createResult.customerPrice,
+                        date: createResult.date,
+                        origin: createResult.origin,
+                        destination: createResult.destination,
+                        vehicleType: vehicleTypeId
+                    }
                 };
-                
+
                 console.log('📤 SENDING RESPONSE TO AI:');
                 console.log(JSON.stringify(responseData, null, 2));
                 
@@ -333,13 +344,29 @@ router.post('/bookCab', async (req, res) => {
                 break;
                 
             case 'getBooking':
-                console.log('\n🔍 === GET BOOKING OPERATION ===');
-                console.log('🌐 CALLING CABEE GET BOOKINGS API:');
-                console.log(`   URL: ${CABEE_API_BASE}/Job/GetOnlineJobs`);
-                console.log(`   Method: GET`);
-                console.log(`   Headers: Authorization: Bearer ${JWT_TOKEN?.substring(0, 20)}...`);
+                console.log('Getting booking details...');
                 
-                const getResponse = await fetch(`${CABEE_API_BASE}/Job/GetOnlineJobs`, {
+                // let getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs`;
+                // if (jobNO) {
+                //     getBookingUrl += `?${jobNO}`;
+                // } else if (Phone) {
+                //     getBookingUrl += `/GetOnlineJobs/${Phone}`;
+                // }
+                let getBookingUrl;
+    
+                if (jobNO) {
+                    // CORRECT: Add parameter name
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?jobNO=${jobNO}`;
+                } else if (Phone) {
+                    // CORRECT: Use phoneNumber parameter
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?phoneNumber=${Phone}`;
+                } else {
+                    throw new Error('Either job number or phone number is required to get booking details');
+                }
+                
+                console.log(`📤 GET BOOKING REQUEST: ${getBookingUrl}`);
+                
+                const getResponse = await fetch(getBookingUrl, {
                     method: 'GET',
                     headers: {
                         'accept': 'text/plain',
@@ -347,83 +374,54 @@ router.post('/bookCab', async (req, res) => {
                     }
                 });
                 
-                console.log(`📡 Cabee Response Status: ${getResponse.status} ${getResponse.statusText}`);
+                console.log(`📡 Get Response Status: ${getResponse.status} ${getResponse.statusText}`);
                 
                 if (!getResponse.ok) {
-                    console.log(`❌ GET BOOKING ERROR: ${getResponse.status}`);
-                    throw new Error(`Get booking API error: ${getResponse.status}`);
+                    const errorText = await getResponse.text();
+                    console.log(`❌ GET BOOKING ERROR:`, errorText);
+                    if (getResponse.status === 404) {
+                        res.status(404).json({
+                            status: "error",
+                            booking_status: "not_found",
+                            error: "Booking not found",
+                            data: null
+                        });
+                        return;
+                    }
+                    throw new Error(`Get booking API error: ${getResponse.status} - ${errorText}`);
                 }
                 
                 const getResult = await getResponse.json();
-                console.log(`📤 GET BOOKING SUCCESS: ${getResult.length} total bookings retrieved`);
+                console.log('✅ GET BOOKING SUCCESS:', JSON.stringify(getResult, null, 2));
                 
-                // Filter by job number, phone, or addresses if provided
-                let filteredBookings = getResult;
-                console.log('🔍 APPLYING FILTERS:');
-                
-                if (jobNO) {
-                    console.log(`   Filtering by Job Number: ${jobNO}`);
-                    filteredBookings = getResult.filter(booking => booking.jobNO === jobNO);
-                } else if (Phone) {
-                    console.log(`   Filtering by Phone: ${Phone}`);
-                    filteredBookings = getResult.filter(booking => 
-                        booking.passengerPhone === Phone || booking.passengerMobile === Phone
-                    );
-                } else if (pickupAddress && dropoffAddress) {
-                    console.log(`   Filtering by Addresses: ${pickupAddress} → ${dropoffAddress}`);
-                    filteredBookings = getResult.filter(booking => 
-                        booking.origin === pickupAddress && booking.destination === dropoffAddress
-                    );
-                } else {
-                    console.log('   No filters applied - returning all bookings');
-                }
-                
-                console.log(`✅ FILTERED RESULTS: ${filteredBookings.length} matching bookings`);
-                
-                if (filteredBookings.length > 0) {
-                    console.log('📋 FOUND BOOKINGS:');
-                    filteredBookings.forEach((booking, index) => {
-                        console.log(`   ${index + 1}. Job ${booking.jobNO} - ${booking.passengerName} - ${booking.origin} → ${booking.destination}`);
-                    });
-                } else {
-                    console.log('⚠️ NO MATCHING BOOKINGS FOUND');
-                }
-                
-                console.log('📤 SENDING RESPONSE TO AI:');
-                console.log(JSON.stringify(filteredBookings, null, 2));
-                
-                res.json(filteredBookings);
+                res.json({
+                    status: "success",
+                    booking_status: "found",
+                    error: null,
+                    data: getResult
+                });
                 break;
                 
             case 'updateBooking':
-                // Update existing booking using real API
                 console.log('Updating booking...');
+                
+                // Use consistent format for update data
                 const updateData = {
-                    id: req.body.id || 0,
-                    jobNO: jobNO,
-                    date: date || new Date().toISOString(),
+                    id: jobNO,
+                    companyId: 99,
                     passengerName: passengerName,
                     passengerPhone: Phone,
-                    passengerMobile: Phone,
                     passengerEmail: passengerEmail,
-                    passengers: passengers || 1,
-                    bags: bags || 0,
-                    note: note || '',
-                    companyId: 99,
-                    driver_id: null,
-                    paymentMethod_id: 0,
-                    driverPrice: customerPrice || 0,
-                    customerPrice: customerPrice || 0,
-                    duration: 0,
-                    distance: 0,
-                    jobSource: 3,
-                    jobcase: 0,
-                    vehicleTypeId: vehicleTypeId || 79,
+                    passengers: parseInt(passengers) || undefined,
+                    date: date,
                     origin: origin,
-                    destination: destination
+                    destination: destination,
+                    note: note
                 };
                 
-                const updateResponse = await fetch(`${CABEE_API_BASE}/Job/UpdateOnlineJob/${req.body.id}`, {
+                console.log('📤 UPDATE REQUEST:', JSON.stringify(updateData, null, 2));
+                
+                const updateResponse = await fetch(`${CABEE_API_BASE}/Job/UpdateJob`, {
                     method: 'PUT',
                     headers: {
                         'accept': 'text/plain',
@@ -433,59 +431,100 @@ router.post('/bookCab', async (req, res) => {
                     body: JSON.stringify(updateData)
                 });
                 
+                console.log(`📡 Update Response Status: ${updateResponse.status} ${updateResponse.statusText}`);
+                
                 if (!updateResponse.ok) {
-                    throw new Error(`Update booking API error: ${updateResponse.status}`);
+                    const errorText = await updateResponse.text();
+                    console.log(`❌ UPDATE ERROR:`, errorText);
+                    throw new Error(`Update booking API error: ${updateResponse.status} - ${errorText}`);
                 }
                 
                 const updateResult = await updateResponse.json();
-                console.log('Booking updated:', updateResult);
+                console.log('✅ UPDATE SUCCESS:', JSON.stringify(updateResult, null, 2));
                 
                 res.json({
-                    success: true,
-                    jobNO: jobNO,
-                    message: 'Booking updated successfully',
+                    status: "success",
+                    booking_status: "updated",
+                    error: null,
                     data: updateResult
                 });
                 break;
                 
             case 'cancelBooking':
-                // Cancel booking using real API
                 console.log('Cancelling booking...');
-                const cancelData = new URLSearchParams();
+                
+                let cancelUrl = `${CABEE_API_BASE}/Job/CancelJob`;
+                
+                // Add query parameters to URL
                 if (jobNO) {
-                    cancelData.append('jobNo', jobNO);
+                    cancelUrl += `?jobNo=${encodeURIComponent(jobNO)}`;
+                    console.log(`🔍 Cancelling by job number: ${jobNO}`);
                 } else if (Phone) {
-                    cancelData.append('mobile', Phone);
+                    cancelUrl += `?mobile=${encodeURIComponent(Phone)}`;
+                    console.log(`🔍 Cancelling by phone: ${Phone}`);
+                } else {
+                    const errorMsg = 'Either job number or phone number is required to cancel booking';
+                    console.log(`❌ ${errorMsg}`);
+                    throw new Error(errorMsg);
                 }
                 
-                const cancelResponse = await fetch(`${CABEE_API_BASE}/Job/CancelJob`, {
+                // Add companyId as query parameter
+                cancelUrl += `&companyId=99`;
+                
+                console.log('📤 CANCEL REQUEST URL:', cancelUrl);
+                
+                const cancelResponse = await fetch(cancelUrl, {
                     method: 'POST',
                     headers: {
                         'accept': 'text/plain',
                         'Authorization': `Bearer ${JWT_TOKEN}`
                     },
-                    body: cancelData
+                    body: '' // Empty body like the working curl command
                 });
                 
+                console.log(`📡 Cancel Response Status: ${cancelResponse.status} ${cancelResponse.statusText}`);
+                
                 if (!cancelResponse.ok) {
-                    throw new Error(`Cancel booking API error: ${cancelResponse.status}`);
+                    const errorText = await cancelResponse.text();
+                    console.log(`❌ CANCEL ERROR:`, errorText);
+                    throw new Error(`Cancel booking API error: ${cancelResponse.status} - ${errorText}`);
                 }
                 
-                // Handle text response instead of JSON
                 const cancelResult = await cancelResponse.text();
-                console.log('Booking cancelled:', cancelResult);
+                console.log('✅ CANCEL RESPONSE TEXT:', cancelResult);
+                
+                // Determine if cancellation was successful based on response text
+                let booking_status = "cancelled";
+                let status = "success";
+                let error = null;
+                
+                if (cancelResult.includes("Not Found") || 
+                    cancelResult.includes("not found") || 
+                    cancelResult.includes("NotFound") ||
+                    cancelResult.toLowerCase().includes("error")) {
+                    booking_status = "not_found";
+                    status = "error";
+                    error = "Booking not found";
+                }
+                
+                console.log(`🎯 FINAL STATUS: ${status}, BOOKING_STATUS: ${booking_status}`);
                 
                 res.json({
-                    success: true,
-                    jobNO: jobNO,
-                    message: 'Booking cancelled successfully',
-                    data: cancelResult
+                    status: status,
+                    booking_status: booking_status,
+                    error: error,
+                    data: {
+                        jobNO: jobNO,
+                        result: cancelResult
+                    }
                 });
                 break;
                 
             case 'getDriverLocation':
-                // Get driver location using real API
                 console.log('Getting driver location...');
+                
+                console.log(`📤 LOCATION REQUEST: Job ${jobNO}`);
+                
                 const locationResponse = await fetch(`${CABEE_API_BASE}/Job/GetDriverCurrentLocationForJob/${jobNO}`, {
                     method: 'GET',
                     headers: {
@@ -494,25 +533,34 @@ router.post('/bookCab', async (req, res) => {
                     }
                 });
                 
+                console.log(`📡 Location Response Status: ${locationResponse.status} ${locationResponse.statusText}`);
+                
                 if (!locationResponse.ok) {
+                    const errorText = await locationResponse.text();
+                    console.log(`❌ LOCATION ERROR:`, errorText);
                     if (locationResponse.status === 404) {
                         res.status(404).json({
-                            success: false,
-                            error: 'Driver location not found or not assigned yet'
+                            status: "error",
+                            booking_status: "driver_not_found",
+                            error: "Driver location not available or not assigned yet",
+                            data: null
                         });
                         return;
                     }
-                    throw new Error(`Get driver location API error: ${locationResponse.status}`);
+                    throw new Error(`Get driver location API error: ${locationResponse.status} - ${errorText}`);
                 }
                 
                 const locationResult = await locationResponse.json();
-                console.log('Driver location:', locationResult);
+                console.log('✅ LOCATION SUCCESS:', JSON.stringify(locationResult, null, 2));
                 
                 res.json({
-                    success: true,
-                    jobNO: jobNO,
-                    driverLocation: locationResult,
-                    message: 'Driver location retrieved successfully'
+                    status: "success",
+                    booking_status: "driver_located",
+                    error: null,
+                    data: {
+                        jobNO: jobNO,
+                        location: locationResult
+                    }
                 });
                 break;
                 
