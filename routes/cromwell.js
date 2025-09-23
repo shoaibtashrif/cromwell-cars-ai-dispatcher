@@ -22,6 +22,7 @@ router.post('/validateAddress', async (req, res) => {
         
         const { address_lines, postcode, building } = req.body;
         
+
         // Fix: Parse stringified address_lines array from AI
         let parsedAddressLines = address_lines;
         if (typeof address_lines === 'string') {
@@ -40,6 +41,7 @@ router.post('/validateAddress', async (req, res) => {
             console.log(`🔧 MADE ARRAY: ${address_lines} → ${JSON.stringify(parsedAddressLines)}`);
         } else {
             console.log(`✅ ALREADY ARRAY: ${JSON.stringify(parsedAddressLines)}`);
+
         }
         
         const requestPayload = {
@@ -47,6 +49,11 @@ router.post('/validateAddress', async (req, res) => {
             postcode: postcode,
       
         };
+        
+        console.log('🔧 PARSED ADDRESS DATA:');
+        console.log(`   Original address_lines: ${JSON.stringify(address_lines)}`);
+        console.log(`   Parsed to array: ${JSON.stringify(parsedAddressLines)}`);
+        console.log(`   Type: ${Array.isArray(parsedAddressLines) ? 'Array' : typeof parsedAddressLines}`);
         
         console.log('🌐 CALLING CROMWELL ADDRESS API:');
         console.log(`   URL: ${CROMWELL_API_BASE}/address/validate`);
@@ -67,7 +74,9 @@ router.post('/validateAddress', async (req, res) => {
         if (!response.ok) {
             const errorText = await response.text();
             console.log(`❌ API Error: ${response.status}`);
+
             console.log(`❌ Error Details: ${errorText}`);
+
             throw new Error(`Address validation API error: ${response.status} - ${errorText}`);
         }
         
