@@ -45,7 +45,7 @@ router.post('/validateAddress', async (req, res) => {
         const requestPayload = {
             address_lines: parsedAddressLines,
             postcode: postcode,
-            building: building
+      
         };
         
         console.log('🌐 CALLING CROMWELL ADDRESS API:');
@@ -337,11 +337,22 @@ router.post('/bookCab', async (req, res) => {
             case 'getBooking':
                 console.log('Getting booking details...');
                 
-                let getBookingUrl = `${CABEE_API_BASE}/Job/GetJob`;
+                // let getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs`;
+                // if (jobNO) {
+                //     getBookingUrl += `?${jobNO}`;
+                // } else if (Phone) {
+                //     getBookingUrl += `/GetOnlineJobs/${Phone}`;
+                // }
+                let getBookingUrl;
+    
                 if (jobNO) {
-                    getBookingUrl += `/${jobNO}`;
+                    // CORRECT: Add parameter name
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?jobNO=${jobNO}`;
                 } else if (Phone) {
-                    getBookingUrl += `/GetByMobile/${Phone}`;
+                    // CORRECT: Use phoneNumber parameter
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?phoneNumber=${Phone}`;
+                } else {
+                    throw new Error('Either job number or phone number is required to get booking details');
                 }
                 
                 console.log(`📤 GET BOOKING REQUEST: ${getBookingUrl}`);
@@ -433,26 +444,33 @@ router.post('/bookCab', async (req, res) => {
             case 'cancelBooking':
                 console.log('Cancelling booking...');
                 
-                // Use JSON format consistently
-                const cancelData = {
-                    jobNo: jobNO,
-                    companyId: 99  // Use same companyId as booking creation
-                };
+                let cancelUrl = `${CABEE_API_BASE}/Job/CancelJob`;
                 
-                if (Phone) {
-                    cancelData.mobile = Phone;
+                // Add query parameters to URL
+                if (jobNO) {
+                    cancelUrl += `?jobNo=${encodeURIComponent(jobNO)}`;
+                    console.log(`🔍 Cancelling by job number: ${jobNO}`);
+                } else if (Phone) {
+                    cancelUrl += `?mobile=${encodeURIComponent(Phone)}`;
+                    console.log(`🔍 Cancelling by phone: ${Phone}`);
+                } else {
+                    const errorMsg = 'Either job number or phone number is required to cancel booking';
+                    console.log(`❌ ${errorMsg}`);
+                    throw new Error(errorMsg);
                 }
                 
-                console.log('📤 CANCEL REQUEST:', JSON.stringify(cancelData, null, 2));
+                // Add companyId as query parameter
+                cancelUrl += `&companyId=99`;
                 
-                const cancelResponse = await fetch(`${CABEE_API_BASE}/Job/CancelJob`, {
+                console.log('📤 CANCEL REQUEST URL:', cancelUrl);
+                
+                const cancelResponse = await fetch(cancelUrl, {
                     method: 'POST',
                     headers: {
                         'accept': 'text/plain',
-                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${JWT_TOKEN}`
                     },
-                    body: JSON.stringify(cancelData)
+                    body: '' // Empty body like the working curl command
                 });
                 
                 console.log(`📡 Cancel Response Status: ${cancelResponse.status} ${cancelResponse.statusText}`);
@@ -464,12 +482,28 @@ router.post('/bookCab', async (req, res) => {
                 }
                 
                 const cancelResult = await cancelResponse.text();
-                console.log('✅ CANCEL SUCCESS:', cancelResult);
+                console.log('✅ CANCEL RESPONSE TEXT:', cancelResult);
+                
+                // Determine if cancellation was successful based on response text
+                let booking_status = "cancelled";
+                let status = "success";
+                let error = null;
+                
+                if (cancelResult.includes("Not Found") || 
+                    cancelResult.includes("not found") || 
+                    cancelResult.includes("NotFound") ||
+                    cancelResult.toLowerCase().includes("error")) {
+                    booking_status = "not_found";
+                    status = "error";
+                    error = "Booking not found";
+                }
+                
+                console.log(`🎯 FINAL STATUS: ${status}, BOOKING_STATUS: ${booking_status}`);
                 
                 res.json({
-                    status: "success",
-                    booking_status: "cancelled",
-                    error: null,
+                    status: status,
+                    booking_status: booking_status,
+                    error: error,
                     data: {
                         jobNO: jobNO,
                         result: cancelResult
