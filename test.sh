@@ -11,13 +11,22 @@ get_ngrok_url() {
     curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*' | cut -d'"' -f4
 }
 
-# Function to update Twilio webhook for a specific number
+# Function to update Twilio webhook
 update_twilio_webhook() {
     local webhook_url=$1
-    local phone_number=$2
-    local phone_sid=$3
     
-    echo "🔗 Updating Twilio webhook for number $phone_number (SID: $phone_sid)"
+    # Get the correct phone SID based on the active number
+    local phone_sid
+    if [ "$TWILIO_PHONE_NUMBER" = "+17624000454" ]; then
+        phone_sid="PN41ed904e49e30ed6f151e849d8642a91"  # US number
+    elif [ "$TWILIO_PHONE_NUMBER" = "+441202144725" ]; then
+        phone_sid="PN2c5ff78e5778b80e82bcd3e4acd03e3c"  # UK number
+    else
+        echo "❌ Error: Unknown phone number in TWILIO_PHONE_NUMBER"
+        return 1
+    fi
+    
+    echo "🔗 Updating Twilio webhook for number $TWILIO_PHONE_NUMBER (SID: $phone_sid)"
     
     local response=$(curl -s -X POST \
         -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" \
@@ -26,23 +35,12 @@ update_twilio_webhook() {
         "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/IncomingPhoneNumbers/$phone_sid.json")
     
     if echo "$response" | grep -q "error"; then
-        echo "❌ Error updating webhook for $phone_number: $response"
+        echo "❌ Error updating webhook: $response"
         return 1
     else
-        echo "✅ Twilio webhook updated successfully for $phone_number!"
+        echo "✅ Twilio webhook updated successfully!"
         return 0
     fi
-}
-
-# Function to update all Twilio webhooks
-update_all_twilio_webhooks() {
-    local webhook_url=$1
-    
-    # Update webhook for US number
-    update_twilio_webhook "$webhook_url" "+17624000454" "PN41ed904e49e30ed6f151e849d8642a91"
-    
-    # Update webhook for UK number  
-    update_twilio_webhook "$webhook_url" "+441202144725" "PN2c5ff78e5778b80e82bcd3e4acd03e3c"
 }
 
 # Function to test webhook (with retry logic)
@@ -55,10 +53,10 @@ test_webhook() {
     local attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        # Test with US number
+        # Use the active phone number from environment
         local response=$(curl -s -X POST "$webhook_url/twilio/incoming" \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "CallSid=test123&From=%2B1234567890&To=%2B17624000454" \
+            -d "CallSid=test123&From=%2B1234567890&To=$TWILIO_PHONE_NUMBER" \
             --connect-timeout 5 --max-time 10)
         
         if echo "$response" | grep -q "ultravox"; then
@@ -109,9 +107,9 @@ echo "📡 ngrok URL: $NGROK_URL"
 echo "⚙️  Updating ultravox config..."
 sed -i.bak "s|https://[^/]*\.ngrok-free\.app|$NGROK_URL|g" ultravox-config.js
 
-# Update Twilio webhooks for BOTH numbers
+# Update Twilio webhook
 WEBHOOK_URL="$NGROK_URL/twilio/incoming"
-update_all_twilio_webhooks "$WEBHOOK_URL"
+update_twilio_webhook "$WEBHOOK_URL"
 
 # Start the server in background
 echo "🚀 Starting server..."
@@ -124,9 +122,7 @@ sleep 3
 # Test the webhook (with retry logic)
 test_webhook "$NGROK_URL"
 
-echo "📞 Your Twilio numbers are ready!"
-echo "   US: +17624000454"
-echo "   UK: +441202144725"
+echo "📞 Your Twilio number $TWILIO_PHONE_NUMBER is ready!"
 echo "🔗 Webhook URL: $WEBHOOK_URL"
 echo "📊 Monitor calls: http://localhost:3000/twilio/active-calls"
 echo ""
